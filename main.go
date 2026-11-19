@@ -1,7 +1,9 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -11,9 +13,21 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	_ "modernc.org/sqlite"
 )
 
+const dbTimeLayout = "2006-01-02T15:04:05.000000000Z"
+
 func main() {
+	db, err := initDatabase("./gateway.db")
+	if err != nil {
+		log.Fatalf("Database initialization failed: %v", err)
+	}
+	defer db.Close()
+
+	log.Println("Database initialized successfully")
+
 	udpAddr := net.JoinHostPort(
 		os.Getenv("EDGEGATEWAY_IP"),
 		os.Getenv("EDGEGATEWAY_UDPPORT"),
@@ -33,9 +47,7 @@ func main() {
 
 	defer conn.Close()
 
-	buffer := make([]byte, 1024)
-
-	inMemoryStore := NewStore()
+	// inMemoryStore := NewStore()
 
 	mux := http.NewServeMux()
 
@@ -51,10 +63,22 @@ func main() {
 
 		log.Printf("Received nodeId: %v", nodeId)
 		log.Printf("Received metric: %v", metric)
-		latestSensorReading, found := inMemoryStore.Get(nodeId + ":" + metric)
+		// latestSensorReading, found := inMemoryStore.Get(nodeId + ":" + metric)
 
-		if found != true {
-			http.Error(w, "A reading for the nodeId and metric was not found", http.StatusBadRequest)
+		// if found != true {
+		// 	http.Error(w, "A reading for the nodeId and metric was not found", http.StatusBadRequest)
+		// 	return
+		// }
+
+		latestSensorReading, err := getLastSensorReading(db, nodeId, metric)
+
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				http.Error(w, "Reading not found", http.StatusNotFound)
+			} else {
+				log.Printf("Database error: %v", err)
+				http.Error(w, "Internal server error", http.StatusInternalServerError)
+			}
 			return
 		}
 
@@ -71,6 +95,21 @@ func main() {
 		}
 	})
 
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		allSensorReading, err := getAllSensorReadings(db)
+
+		if err != nil {
+			log.Printf("Error getting latestSensorReading from database: %v", err)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+
+		if err := json.NewEncoder(w).Encode(allSensorReading); err != nil {
+			log.Printf("Error encoding allSensorReading: %v", err)
+		}
+	})
+
 	go func() {
 		log.Printf("HTTP server listening on :%s", os.Getenv("EDGEGATEWAY_HTTPPORT"))
 
@@ -78,6 +117,8 @@ func main() {
 			log.Fatal(err)
 		}
 	}()
+
+	buffer := make([]byte, 1024)
 
 	for {
 		n, clientAddress, err := conn.ReadFromUDP(buffer)
@@ -106,7 +147,10 @@ func main() {
 		log.Printf("SensorReading.Metric: %v", sensorReading.Metric)
 		sensorReading.ReceivedAt = time.Now()
 		if sensorReading.NodeId != "" && sensorReading.Metric != "" {
-			inMemoryStore.Set(sensorReading.NodeId+":"+sensorReading.Metric, sensorReading)
+			if err := insertSensorReading(db, sensorReading); err != nil {
+				log.Printf("Failed to save sensor reading: %v", err)
+			}
+			// inMemoryStore.Set(sensorReading.NodeId+":"+sensorReading.Metric, sensorReading)
 		}
 
 	}
@@ -181,4 +225,165 @@ func (s *InMemoryStore) Get(key string) (SensorReading, bool) {
 
 	value, exists := s.data[key]
 	return value, exists
+}
+
+func initDatabase(dbPath string) (*sql.DB, error) {
+	// Open existing database or create it if it doesn't exist.
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("opening database: %w", err)
+	}
+
+	// Create SensorReadings table.
+	createTable := `
+        CREATE TABLE IF NOT EXISTS SensorReadings (
+            Id           INTEGER PRIMARY KEY,
+            Version      TEXT NOT NULL,
+            NodeId       TEXT NOT NULL,
+            ReadId       INTEGER NOT NULL,
+            SensorAction TEXT NOT NULL,
+            Metric       TEXT NOT NULL,
+            Value        TEXT NOT NULL,
+            ReceivedAt   TEXT NOT NULL
+        );
+    `
+
+	if _, err := db.Exec(createTable); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("creating SensorReadings table: %w", err)
+	}
+
+	// Create index for querying latest readings by node and metric.
+	createIndex := `
+        CREATE INDEX IF NOT EXISTS IX_SensorReadings_NodeId_Metric_ReceivedAt
+        ON SensorReadings (NodeId, Metric, ReceivedAt DESC);
+    `
+
+	if _, err := db.Exec(createIndex); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("creating SensorReadings index: %w", err)
+	}
+
+	return db, nil
+}
+
+func insertSensorReading(db *sql.DB, reading SensorReading) error {
+	query := `
+        INSERT INTO SensorReadings (
+            Version,
+            NodeId,
+            ReadId,
+            SensorAction,
+            Metric,
+            Value,
+            ReceivedAt
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?);
+    `
+
+	_, err := db.Exec(
+		query,
+		reading.Version,
+		reading.NodeId,
+		reading.ReadId,
+		reading.SensorAction,
+		reading.Metric,
+		reading.Value,
+		reading.ReceivedAt.UTC().Format(dbTimeLayout),
+	)
+
+	if err != nil {
+		return fmt.Errorf("inserting sensor reading: %w", err)
+	}
+
+	return nil
+}
+
+func getLastSensorReading(db *sql.DB, nodeId string, metric string) (SensorReading, error) {
+	query := `
+        SELECT Version, NodeId, ReadId, SensorAction,
+               Metric, Value, ReceivedAt
+        FROM SensorReadings
+        WHERE NodeId = ? AND Metric = ?
+        ORDER BY ReceivedAt DESC, Id DESC
+        LIMIT 1;
+    `
+
+	var s SensorReading
+	var receivedAt string
+
+	err := db.QueryRow(query, nodeId, metric).Scan(
+		&s.Version,
+		&s.NodeId,
+		&s.ReadId,
+		&s.SensorAction,
+		&s.Metric,
+		&s.Value,
+		&receivedAt,
+	)
+
+	if err != nil {
+		return SensorReading{}, fmt.Errorf(
+			"getting latest sensor reading: %w", err,
+		)
+	}
+
+	s.ReceivedAt, err = time.Parse(time.RFC3339Nano, receivedAt)
+	if err != nil {
+		return SensorReading{}, fmt.Errorf(
+			"parsing ReceivedAt: %w", err,
+		)
+	}
+
+	return s, nil
+}
+
+func getAllSensorReadings(db *sql.DB) ([]SensorReading, error) {
+	query := `
+        SELECT Version, NodeId, ReadId, SensorAction,
+               Metric, Value, ReceivedAt
+        FROM SensorReadings
+        ORDER BY ReceivedAt DESC, Id DESC;
+    `
+
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"getting all sensor readings: %w", err,
+		)
+	}
+	defer rows.Close()
+
+	sensorReadings := make([]SensorReading, 0)
+
+	for rows.Next() {
+		var s SensorReading
+		var receivedAt string
+
+		err := rows.Scan(
+			&s.Version,
+			&s.NodeId,
+			&s.ReadId,
+			&s.SensorAction,
+			&s.Metric,
+			&s.Value,
+			&receivedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("scanning reading: %w", err)
+		}
+
+		s.ReceivedAt, err = time.Parse(time.RFC3339Nano, receivedAt)
+		if err != nil {
+			return nil, fmt.Errorf("parsing ReceivedAt: %w", err)
+		}
+
+		sensorReadings = append(sensorReadings, s)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating readings: %w", err)
+	}
+
+	return sensorReadings, nil
 }

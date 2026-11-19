@@ -31,4 +31,10 @@ go.work.sum
 # .idea/
 .vscode/
 
-edge-gateway
+# Go build artifacts
+/edge-gateway
+
+# SQLite database files
+*.db
+*.db-shm
+*.db-wal
