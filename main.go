@@ -2,9 +2,11 @@ package main
 
 import (
 	"database/sql"
+	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"log"
 	"net"
 	"net/http"
@@ -18,6 +20,9 @@ import (
 )
 
 const dbTimeLayout = "2006-01-02T15:04:05.000000000Z"
+
+//go:embed templates/*
+var templateFiles embed.FS
 
 func main() {
 	db, err := initDatabase("./gateway.db")
@@ -110,51 +115,77 @@ func main() {
 		}
 	})
 
-	go func() {
-		log.Printf("HTTP server listening on :%s", os.Getenv("EDGEGATEWAY_HTTPPORT"))
+	tmpl := template.Must(
+		template.ParseFS(templateFiles, "templates/dashboard.html"),
+	)
 
-		if err := http.ListenAndServe(":"+os.Getenv("EDGEGATEWAY_HTTPPORT"), mux); err != nil {
-			log.Fatal(err)
-		}
-	}()
-
-	buffer := make([]byte, 1024)
-
-	for {
-		n, clientAddress, err := conn.ReadFromUDP(buffer)
-		if err != nil {
-			log.Printf("Read error: %v", err)
-			continue
+	mux.HandleFunc("GET /dashboard", func(w http.ResponseWriter, r *http.Request) {
+		// Example data; eventually query SQLite.
+		data := DashboardData{
+			NodeID:      "node-177",
+			Temperature: 72.5,
+			Humidity:    45.2,
 		}
 
-		rawMessage := string(buffer[:n])
-		fmt.Printf("Got message from %s: %s\n", clientAddress, rawMessage)
-
-		sensorReading, err := parseSensorReading(rawMessage)
-
-		if err != nil {
-			log.Printf("Unable to parse message: %v", err)
-		} else {
-			fmt.Printf("Parsed sensor reading: %+v\n", sensorReading)
+		if err := tmpl.Execute(w, data); err != nil {
+			log.Printf("render dashboard: %v", err)
 		}
+	})
 
-		_, err = conn.WriteToUDP(buffer[:n], clientAddress)
-		if err != nil {
-			log.Printf("Write error: %v", err)
-		}
+	edgeGatewayIngestEnabled, err := strconv.ParseBool(os.Getenv("EDGEGATEWAY_INGEST_ENABLED"))
 
-		log.Printf("SensorReading.NodeId: %v", sensorReading.NodeId)
-		log.Printf("SensorReading.Metric: %v", sensorReading.Metric)
-		sensorReading.ReceivedAt = time.Now()
-		if sensorReading.NodeId != "" && sensorReading.Metric != "" {
-			if err := insertSensorReading(db, sensorReading); err != nil {
-				log.Printf("Failed to save sensor reading: %v", err)
-			}
-			// inMemoryStore.Set(sensorReading.NodeId+":"+sensorReading.Metric, sensorReading)
-		}
-
+	if err != nil {
+		log.Printf("EDGEGATEWAY_INGEST_ENABLED could not be parsed and so is disabled: %v", err)
+		edgeGatewayIngestEnabled = false
 	}
 
+	log.Printf("EDGEGATEWAY_INGEST_ENABLED: %v", edgeGatewayIngestEnabled)
+
+	if edgeGatewayIngestEnabled {
+		go func() {
+			buffer := make([]byte, 1024)
+
+			for {
+				n, clientAddress, err := conn.ReadFromUDP(buffer)
+				if err != nil {
+					log.Printf("Read error: %v", err)
+					continue
+				}
+
+				rawMessage := string(buffer[:n])
+				fmt.Printf("Got message from %s: %s\n", clientAddress, rawMessage)
+
+				sensorReading, err := parseSensorReading(rawMessage)
+
+				if err != nil {
+					log.Printf("Unable to parse message: %v", err)
+				} else {
+					fmt.Printf("Parsed sensor reading: %+v\n", sensorReading)
+				}
+
+				_, err = conn.WriteToUDP(buffer[:n], clientAddress)
+				if err != nil {
+					log.Printf("Write error: %v", err)
+				}
+
+				log.Printf("SensorReading.NodeId: %v", sensorReading.NodeId)
+				log.Printf("SensorReading.Metric: %v", sensorReading.Metric)
+				sensorReading.ReceivedAt = time.Now()
+				if sensorReading.NodeId != "" && sensorReading.Metric != "" {
+					if err := insertSensorReading(db, sensorReading); err != nil {
+						log.Printf("Failed to save sensor reading: %v", err)
+					}
+					// inMemoryStore.Set(sensorReading.NodeId+":"+sensorReading.Metric, sensorReading)
+				}
+			}
+		}()
+	}
+
+	log.Printf("HTTP server listening on :%s", os.Getenv("EDGEGATEWAY_HTTPPORT"))
+
+	if err := http.ListenAndServe(":"+os.Getenv("EDGEGATEWAY_HTTPPORT"), mux); err != nil {
+		log.Fatal(err)
+	}
 }
 
 // Version|Node|ReadId|Sensor_Action|Metric|Value
@@ -386,4 +417,10 @@ func getAllSensorReadings(db *sql.DB) ([]SensorReading, error) {
 	}
 
 	return sensorReadings, nil
+}
+
+type DashboardData struct {
+	NodeID      string
+	Temperature float64
+	Humidity    float64
 }
