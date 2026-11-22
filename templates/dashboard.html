@@ -1,13 +1,262 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Home Sensor Dashboard</title>
-</head>
-<body>
-    <h1>Sensor Dashboard</h1>
 
-    <h2>{{.NodeID}}</h2>
-    <p>Temperature: {{.Temperature}} °F</p>
-    <p>Humidity: {{.Humidity}}%</p>
+{{define "metric-status"}}
+    {{if .ReceivedAt.IsZero}}
+        <div class="metric-status status-missing">
+            No reading available
+        </div>
+    {{else}}
+        <div class="metric-status {{if .IsStale}}status-stale{{else}}status-fresh{{end}}">
+            <span class="status-icon">
+                {{if .IsStale}}!{{else}}✓{{end}}
+            </span>
+            {{if .IsStale}}Stale{{else}}Fresh{{end}}
+        </div>
+        <div class="metric-timestamp">
+            Received {{.ReceivedAt.Local.Format "3:04:05 PM"}}
+        </div>
+    {{end}}
+{{end}}
+
+{{define "node-card"}}
+<article class="node-card">
+
+    <div class="node-header">
+        <h2>{{.NodeID}}</h2>
+        <span class="node-subtitle">Sensor station</span>
+    </div>
+
+    <div class="metrics-grid">
+
+        <!-- Temperature -->
+        <section class="metric">
+            <div class="metric-label">
+                <svg viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="1.8"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 14.76V5a3 3 0 0 0-6 0v9.76a5 5 0 1 0 6 0Z"/>
+                    <path d="M11 10v7"/>
+                </svg>
+                Temperature
+            </div>
+
+            <div class="metric-value">
+                {{if .Temperature.ReceivedAt.IsZero}}
+                    —
+                {{else}}
+                    {{printf "%.2f" .Temperature.Value}}<span class="metric-unit">°F</span>
+                {{end}}
+            </div>
+
+            {{template "metric-status" .Temperature}}
+        </section>
+
+        <!-- Humidity -->
+        <section class="metric">
+            <div class="metric-label">
+                <svg viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="1.8"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 22a8 8 0 0 0 8-8c0-5-8-12-8-12S4 9 4 14a8 8 0 0 0 8 8Z"/>
+                </svg>
+                Humidity
+            </div>
+
+            <div class="metric-value">
+                {{if .Humidity.ReceivedAt.IsZero}}
+                    —
+                {{else}}
+                    {{printf "%.2f" .Humidity.Value}}<span class="metric-unit">%</span>
+                {{end}}
+            </div>
+
+            {{template "metric-status" .Humidity}}
+        </section>
+
+    </div>
+</article>
+{{end}}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home Sensor Dashboard</title>
+
+    <style>
+        :root {
+            color-scheme: light dark;
+            --page-bg: #f8fafc;
+            --card-bg: #ffffff;
+            --text-primary: #0f172a;
+            --text-secondary: #64748b;
+            --border-color: #e2e8f0;
+            --fresh-color: #16a34a;
+            --stale-color: #d97706;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --page-bg: #111827;
+                --card-bg: #1f2937;
+                --text-primary: #f9fafb;
+                --text-secondary: #9ca3af;
+                --border-color: #374151;
+                --fresh-color: #4ade80;
+                --stale-color: #fbbf24;
+            }
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 32px 20px;
+            font-family: system-ui, -apple-system, sans-serif;
+            background: var(--page-bg);
+            color: var(--text-primary);
+        }
+
+        .dashboard {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .dashboard-title {
+            margin: 0 0 24px;
+            font-size: 26px;
+            font-weight: 650;
+        }
+
+        /* Reusable node card */
+
+        .node-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+        }
+
+        .node-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 18px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .node-header h2 {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 650;
+        }
+
+        .node-subtitle {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        /* Individual metrics */
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 24px;
+            padding-top: 22px;
+        }
+
+        .metric-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .metric-label svg {
+            width: 17px;
+            height: 17px;
+        }
+
+        .metric-value {
+            margin: 10px 0;
+            font-size: 32px;
+            font-weight: 650;
+            letter-spacing: -0.5px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .metric-unit {
+            font-size: 24px;
+        }
+
+        /* Shared metric status */
+
+        .metric-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+        }
+
+        .status-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            border: 1.5px solid currentColor;
+            font-size: 10px;
+            font-weight: bold;
+        }
+
+        .status-fresh {
+            color: var(--fresh-color);
+        }
+
+        .status-stale {
+            color: var(--stale-color);
+        }
+
+        .status-missing {
+            color: var(--text-secondary);
+        }
+
+        .metric-timestamp {
+            margin-top: 5px;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        /* Mobile */
+
+        @media (max-width: 480px) {
+            .metrics-grid {
+                grid-template-columns: 1fr;
+                gap: 22px;
+            }
+
+            .node-card {
+                padding: 18px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <main class="dashboard">
+        <h1 class="dashboard-title">Sensor Dashboard</h1>
+
+        {{range .NodeDatas}}
+            {{template "node-card" .}}
+        {{else}}
+            <p>No sensor nodes available.</p>
+        {{end}}
+    </main>
 </body>
 </html>

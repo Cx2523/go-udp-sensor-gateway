@@ -87,11 +87,6 @@ func main() {
 			return
 		}
 
-		age := time.Since(latestSensorReading.ReceivedAt)
-		isStale := age > 30*time.Second
-
-		latestSensorReading.IsStale = isStale
-
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 
@@ -121,13 +116,52 @@ func main() {
 
 	mux.HandleFunc("GET /dashboard", func(w http.ResponseWriter, r *http.Request) {
 		// Example data; eventually query SQLite.
-		data := DashboardData{
-			NodeID:      "node-177",
-			Temperature: 72.5,
-			Humidity:    45.2,
+
+		latestSensorReading_Temp, _ := getLastSensorReading(db, "node-177", "temp_f")
+		latestSensorReading_Humidity, _ := getLastSensorReading(db, "node-177", "humidity")
+
+		temp, _ := strconv.ParseFloat(latestSensorReading_Temp.Value, 64)
+		humidity, _ := strconv.ParseFloat(latestSensorReading_Humidity.Value, 64)
+
+		node177data := SensorNodeData{
+			NodeID: latestSensorReading_Temp.NodeId,
+			Temperature: MetricData{
+				Value:      temp,
+				ReceivedAt: latestSensorReading_Temp.ReceivedAt,
+				IsStale:    latestSensorReading_Temp.IsStale,
+			},
+			Humidity: MetricData{
+				Value:      humidity,
+				ReceivedAt: latestSensorReading_Humidity.ReceivedAt,
+				IsStale:    latestSensorReading_Humidity.IsStale,
+			},
 		}
 
-		if err := tmpl.Execute(w, data); err != nil {
+		latestSensorReading_Temp, _ = getLastSensorReading(db, "node-178", "temp_f")
+		latestSensorReading_Humidity, _ = getLastSensorReading(db, "node-178", "humidity")
+
+		temp, _ = strconv.ParseFloat(latestSensorReading_Temp.Value, 64)
+		humidity, _ = strconv.ParseFloat(latestSensorReading_Humidity.Value, 64)
+
+		node178data := SensorNodeData{
+			NodeID: latestSensorReading_Temp.NodeId,
+			Temperature: MetricData{
+				Value:      temp,
+				ReceivedAt: latestSensorReading_Temp.ReceivedAt,
+				IsStale:    latestSensorReading_Temp.IsStale,
+			},
+			Humidity: MetricData{
+				Value:      humidity,
+				ReceivedAt: latestSensorReading_Humidity.ReceivedAt,
+				IsStale:    latestSensorReading_Humidity.IsStale,
+			},
+		}
+
+		dashboardData := DashboardData{
+			NodeDatas: []SensorNodeData{node177data, node178data},
+		}
+
+		if err := tmpl.Execute(w, dashboardData); err != nil {
 			log.Printf("render dashboard: %v", err)
 		}
 	})
@@ -366,6 +400,11 @@ func getLastSensorReading(db *sql.DB, nodeId string, metric string) (SensorReadi
 		)
 	}
 
+	age := time.Since(s.ReceivedAt)
+	isStale := age > 30*time.Second
+
+	s.IsStale = isStale
+
 	return s, nil
 }
 
@@ -419,8 +458,18 @@ func getAllSensorReadings(db *sql.DB) ([]SensorReading, error) {
 	return sensorReadings, nil
 }
 
-type DashboardData struct {
+type MetricData struct {
+	Value      float64
+	ReceivedAt time.Time
+	IsStale    bool
+}
+
+type SensorNodeData struct {
 	NodeID      string
-	Temperature float64
-	Humidity    float64
+	Temperature MetricData
+	Humidity    MetricData
+}
+
+type DashboardData struct {
+	NodeDatas []SensorNodeData
 }
