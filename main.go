@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/r3labs/sse"
 	_ "modernc.org/sqlite"
 )
 
@@ -54,7 +55,20 @@ func main() {
 
 	// inMemoryStore := NewStore()
 
+	sseServer := sse.New()
+	sseServer.CreateStream("sensorReadings")
+
 	mux := http.NewServeMux()
+
+	mux.Handle(
+		"GET /static/",
+		http.StripPrefix(
+			"/static/",
+			http.FileServer(http.Dir("./static")),
+		),
+	)
+
+	mux.HandleFunc("/events", sseServer.HTTPHandler)
 
 	mux.HandleFunc("GET /alive", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
@@ -62,7 +76,7 @@ func main() {
 		fmt.Fprintln(w, "It is alive - Sensor gateway")
 	})
 
-	mux.HandleFunc("GET /{nodeId}/{metric}", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /api/readings/{nodeId}/{metric}", func(w http.ResponseWriter, r *http.Request) {
 		nodeId := r.PathValue("nodeId")
 		metric := r.PathValue("metric")
 
@@ -95,7 +109,7 @@ func main() {
 		}
 	})
 
-	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /api/readings", func(w http.ResponseWriter, r *http.Request) {
 		allSensorReading, err := getAllSensorReadings(db)
 
 		if err != nil {
@@ -157,8 +171,21 @@ func main() {
 			},
 		}
 
+		node177HistoricalTemp, _ := getLastHourSensorReadingByNodeAndMetric(db, "node-177", "temp_f")
+		node178HistoricalTemp, _ := getLastHourSensorReadingByNodeAndMetric(db, "node-178", "temp_f")
+		node177HistoricalHumi, _ := getLastHourSensorReadingByNodeAndMetric(db, "node-177", "humidity")
+		node178HistoricalHumi, _ := getLastHourSensorReadingByNodeAndMetric(db, "node-178", "humidity")
+
+		historicalData := make(map[string][]SensorReading)
+
+		historicalData["node-177:temp_f"] = node177HistoricalTemp
+		historicalData["node-178:temp_f"] = node178HistoricalTemp
+		historicalData["node-177:humidity"] = node177HistoricalHumi
+		historicalData["node-178:humidity"] = node178HistoricalHumi
+
 		dashboardData := DashboardData{
-			NodeDatas: []SensorNodeData{node177data, node178data},
+			NodeDatas:      []SensorNodeData{node177data, node178data},
+			HistoricalData: historicalData,
 		}
 
 		if err := tmpl.Execute(w, dashboardData); err != nil {
@@ -209,6 +236,11 @@ func main() {
 					if err := insertSensorReading(db, sensorReading); err != nil {
 						log.Printf("Failed to save sensor reading: %v", err)
 					}
+
+					byteSlice, _ := json.Marshal(sensorReading)
+					sseServer.Publish("sensorReadings", &sse.Event{
+						Data: []byte(byteSlice),
+					})
 					// inMemoryStore.Set(sensorReading.NodeId+":"+sensorReading.Metric, sensorReading)
 				}
 			}
@@ -458,6 +490,57 @@ func getAllSensorReadings(db *sql.DB) ([]SensorReading, error) {
 	return sensorReadings, nil
 }
 
+func getLastHourSensorReadingByNodeAndMetric(db *sql.DB, nodeId string, metric string) ([]SensorReading, error) {
+	query := `
+        SELECT Version, NodeId, ReadId, SensorAction,
+               Metric, Value, ReceivedAt
+        FROM SensorReadings
+		WHERE NodeId = ? AND Metric = ? AND ReceivedAt >= datetime('now', '-1 hour', 'localtime')
+        ORDER BY ReceivedAt DESC, Id DESC;
+    `
+
+	rows, err := db.Query(query, nodeId, metric)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"getting all sensor readings: %w", err,
+		)
+	}
+	defer rows.Close()
+
+	sensorReadings := make([]SensorReading, 0)
+
+	for rows.Next() {
+		var s SensorReading
+		var receivedAt string
+
+		err := rows.Scan(
+			&s.Version,
+			&s.NodeId,
+			&s.ReadId,
+			&s.SensorAction,
+			&s.Metric,
+			&s.Value,
+			&receivedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("scanning reading: %w", err)
+		}
+
+		s.ReceivedAt, err = time.Parse(time.RFC3339Nano, receivedAt)
+		if err != nil {
+			return nil, fmt.Errorf("parsing ReceivedAt: %w", err)
+		}
+
+		sensorReadings = append(sensorReadings, s)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating readings: %w", err)
+	}
+
+	return sensorReadings, nil
+}
+
 type MetricData struct {
 	Value      float64
 	ReceivedAt time.Time
@@ -471,5 +554,6 @@ type SensorNodeData struct {
 }
 
 type DashboardData struct {
-	NodeDatas []SensorNodeData
+	NodeDatas      []SensorNodeData
+	HistoricalData map[string][]SensorReading
 }

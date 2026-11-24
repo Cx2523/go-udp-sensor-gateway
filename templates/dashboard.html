@@ -1,262 +1,1003 @@
-
 {{define "metric-status"}}
+
     {{if .ReceivedAt.IsZero}}
+
         <div class="metric-status status-missing">
+
             No reading available
+
         </div>
+
     {{else}}
+
         <div class="metric-status {{if .IsStale}}status-stale{{else}}status-fresh{{end}}">
+
             <span class="status-icon">
+
                 {{if .IsStale}}!{{else}}✓{{end}}
+
             </span>
+
             {{if .IsStale}}Stale{{else}}Fresh{{end}}
+
         </div>
+
         <div class="metric-timestamp">
+
             Received {{.ReceivedAt.Local.Format "3:04:05 PM"}}
+
         </div>
+
     {{end}}
+
 {{end}}
 
+
+
 {{define "node-card"}}
+
 <article class="node-card">
 
     <div class="node-header">
+
         <h2>{{.NodeID}}</h2>
+
         <span class="node-subtitle">Sensor station</span>
+
     </div>
+
+
 
     <div class="metrics-grid">
 
-        <!-- Temperature -->
+
+
         <section class="metric">
+
             <div class="metric-label">
+
                 <svg viewBox="0 0 24 24" fill="none"
+
                      stroke="currentColor" stroke-width="1.8"
+
                      stroke-linecap="round" stroke-linejoin="round">
+
                     <path d="M14 14.76V5a3 3 0 0 0-6 0v9.76a5 5 0 1 0 6 0Z"/>
+
                     <path d="M11 10v7"/>
+
                 </svg>
+
                 Temperature
+
             </div>
 
+
+
             <div class="metric-value">
+
                 {{if .Temperature.ReceivedAt.IsZero}}
+
                     —
+
                 {{else}}
+
                     {{printf "%.2f" .Temperature.Value}}<span class="metric-unit">°F</span>
+
                 {{end}}
+
             </div>
+
+
 
             {{template "metric-status" .Temperature}}
+
         </section>
 
-        <!-- Humidity -->
+
+
         <section class="metric">
+
             <div class="metric-label">
+
                 <svg viewBox="0 0 24 24" fill="none"
+
                      stroke="currentColor" stroke-width="1.8"
+
                      stroke-linecap="round" stroke-linejoin="round">
+
                     <path d="M12 22a8 8 0 0 0 8-8c0-5-8-12-8-12S4 9 4 14a8 8 0 0 0 8 8Z"/>
+
                 </svg>
+
                 Humidity
+
             </div>
+
+
 
             <div class="metric-value">
+
                 {{if .Humidity.ReceivedAt.IsZero}}
+
                     —
+
                 {{else}}
+
                     {{printf "%.2f" .Humidity.Value}}<span class="metric-unit">%</span>
+
                 {{end}}
+
             </div>
 
+
+
             {{template "metric-status" .Humidity}}
+
         </section>
 
+
+
     </div>
+
 </article>
+
 {{end}}
 
+
+
 <!DOCTYPE html>
+
 <html lang="en">
+
 <head>
+
     <meta charset="UTF-8">
+
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <title>Home Sensor Dashboard</title>
 
+
+
     <style>
+
         :root {
+
             color-scheme: light dark;
+
             --page-bg: #f8fafc;
+
             --card-bg: #ffffff;
+
             --text-primary: #0f172a;
+
             --text-secondary: #64748b;
+
             --border-color: #e2e8f0;
+
             --fresh-color: #16a34a;
+
             --stale-color: #d97706;
+
         }
+
+
 
         @media (prefers-color-scheme: dark) {
+
             :root {
+
                 --page-bg: #111827;
+
                 --card-bg: #1f2937;
+
                 --text-primary: #f9fafb;
+
                 --text-secondary: #9ca3af;
+
                 --border-color: #374151;
+
                 --fresh-color: #4ade80;
+
                 --stale-color: #fbbf24;
+
             }
+
         }
+
+
 
         * {
+
             box-sizing: border-box;
+
         }
+
+
 
         body {
+
             margin: 0;
+
             padding: 32px 20px;
+
             font-family: system-ui, -apple-system, sans-serif;
+
             background: var(--page-bg);
+
             color: var(--text-primary);
+
         }
+
+
 
         .dashboard {
-            max-width: 900px;
+
+            max-width: 1440px;
+
             margin: 0 auto;
+
         }
+
+        /* Sensor node cards on the left, graphs on the right. */
+        .dashboard-columns {
+            display: grid;
+            grid-template-columns: minmax(0, 35fr) minmax(0, 65fr);
+            gap: 24px;
+            align-items: start;
+        }
+
+        .dashboard-column {
+            min-width: 0;
+        }
+
+        .dashboard-column > .section-title {
+            margin-top: 0;
+        }
+
+        /* Keep each metric readable as the left column narrows. */
+        .node-column .metrics-grid {
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        }
+
+
 
         .dashboard-title {
+
             margin: 0 0 24px;
+
             font-size: 26px;
+
             font-weight: 650;
+
         }
 
-        /* Reusable node card */
 
-        .node-card {
+
+        .section-title {
+
+            margin: 32px 0 20px;
+
+            font-size: 21px;
+
+            font-weight: 650;
+
+        }
+
+
+
+        .node-card, .chart-card {
+
             background: var(--card-bg);
+
             border: 1px solid var(--border-color);
+
             border-radius: 14px;
+
             padding: 24px;
+
             margin-bottom: 20px;
+
             box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+
         }
+
+
 
         .node-header {
+
             display: flex;
+
             justify-content: space-between;
+
             align-items: center;
+
             padding-bottom: 18px;
+
             border-bottom: 1px solid var(--border-color);
+
         }
+
+
 
         .node-header h2 {
+
             margin: 0;
+
             font-size: 20px;
+
             font-weight: 650;
+
         }
+
+
 
         .node-subtitle {
+
             font-size: 13px;
+
             color: var(--text-secondary);
+
         }
 
-        /* Individual metrics */
+
 
         .metrics-grid {
+
             display: grid;
+
             grid-template-columns: repeat(2, minmax(0, 1fr));
+
             gap: 24px;
+
             padding-top: 22px;
+
         }
+
+
 
         .metric-label {
+
             display: flex;
+
             align-items: center;
+
             gap: 6px;
+
             font-size: 13px;
+
             color: var(--text-secondary);
+
         }
+
+
 
         .metric-label svg {
+
             width: 17px;
+
             height: 17px;
+
         }
+
+
 
         .metric-value {
+
             margin: 10px 0;
+
             font-size: 32px;
+
             font-weight: 650;
+
             letter-spacing: -0.5px;
+
             font-variant-numeric: tabular-nums;
+
         }
+
+
 
         .metric-unit {
+
             font-size: 24px;
+
         }
 
-        /* Shared metric status */
+
 
         .metric-status {
+
             display: flex;
+
             align-items: center;
+
             gap: 6px;
+
             font-size: 13px;
+
         }
+
+
 
         .status-icon {
+
             display: inline-flex;
+
             align-items: center;
+
             justify-content: center;
+
             width: 15px;
+
             height: 15px;
+
             border-radius: 50%;
+
             border: 1.5px solid currentColor;
+
             font-size: 10px;
+
             font-weight: bold;
+
         }
+
+
 
         .status-fresh {
+
             color: var(--fresh-color);
+
         }
+
+
 
         .status-stale {
+
             color: var(--stale-color);
+
         }
+
+
 
         .status-missing {
+
             color: var(--text-secondary);
+
         }
+
+
 
         .metric-timestamp {
+
             margin-top: 5px;
+
             font-size: 12px;
+
             color: var(--text-secondary);
+
         }
 
-        /* Mobile */
+
+
+        /* Historical charts */
+
+
+
+        .chart-header {
+
+            display: flex;
+
+            justify-content: space-between;
+
+            align-items: center;
+
+            margin-bottom: 20px;
+
+            gap: 12px;
+
+        }
+
+
+
+        .chart-title {
+
+            margin: 0;
+
+            font-size: 18px;
+
+            font-weight: 650;
+
+        }
+
+
+
+        .chart-subtitle {
+
+            font-size: 12px;
+
+            color: var(--text-secondary);
+
+        }
+
+
+
+        .chart-plot {
+
+            position: relative;
+
+            height: 320px;
+
+            width: 100%;
+
+        }
+
+
+
+        .empty-message {
+
+            color: var(--text-secondary);
+
+            font-size: 14px;
+
+        }
+
+
+
+        @media (max-width: 900px) {
+            .dashboard-columns {
+                grid-template-columns: 1fr;
+            }
+        }
 
         @media (max-width: 480px) {
-            .metrics-grid {
+
+            .node-column .metrics-grid {
+
                 grid-template-columns: 1fr;
+
                 gap: 22px;
+
             }
 
-            .node-card {
+
+
+            .node-card, .chart-card {
+
                 padding: 18px;
+
             }
+
+
+
+            .chart-plot {
+
+                height: 270px;
+
+            }
+
         }
+
     </style>
+
 </head>
 
+
+
 <body>
+
     <main class="dashboard">
+
         <h1 class="dashboard-title">Sensor Dashboard</h1>
 
-        {{range .NodeDatas}}
-            {{template "node-card" .}}
-        {{else}}
-            <p>No sensor nodes available.</p>
-        {{end}}
+
+
+        <div class="dashboard-columns">
+
+            <!-- Left column: sensor node cards -->
+            <section class="dashboard-column node-column">
+                <h2 class="section-title">Sensor Nodes</h2>
+
+                {{range .NodeDatas}}
+                    {{template "node-card" .}}
+                {{else}}
+                    <p class="empty-message">No sensor nodes available.</p>
+                {{end}}
+            </section>
+
+            <!-- Right column: historical and live Chart.js graphs -->
+            <section class="dashboard-column chart-column">
+                <h2 class="section-title">Sensor History</h2>
+
+                <div id="charts-container">
+                    <!-- Charts are added here by JavaScript -->
+                </div>
+            </section>
+
+        </div>
+
     </main>
+
+
+
+    <!-- Locally hosted Chart.js UMD bundle -->
+
+    <script src="/static/chart.umd.min.js"></script>
+
+
+
+
+
+<script>
+(function () {
+    "use strict";
+
+    // Initial history is rendered into this page by Go html/template.
+    const historicalData = {{.HistoricalData}};
+    const chartContainer = document.getElementById("charts-container");
+
+    if (typeof Chart === "undefined") {
+        chartContainer.textContent = "Chart.js could not be loaded.";
+        return;
+    }
+
+    const WINDOW_MS = 60 * 60 * 1000;
+    const RIGHT_PADDING_MS = 60 * 1000; // Show one minute of empty space after 'now'.
+    const GAP_THRESHOLD_MS = 30 * 1000;
+    const WINDOW_REFRESH_MS = 5000;
+    const HIGHLIGHT_DURATION_MS = 1300;
+    const HIGHLIGHT_COLOR = "#fbbf24";
+
+    // These lookup maps are shared by the initial history and incoming SSE events.
+    const chartsByMetric = new Map();
+    const datasetsBySeries = new Map();
+    const subtitlesByMetric = new Map();
+    const nodeColors = new Map();
+
+    // Keep temporary highlights separate from the historical reading data.
+    // They are drawn over the normal points, so they fade back to node colors.
+    const highlightsByChart = new Map();
+    let highlightFrameId = null;
+
+    const incomingPointHighlightPlugin = {
+        id: "incomingPointHighlight",
+        afterDatasetsDraw(chart) {
+            const highlights = highlightsByChart.get(chart);
+            if (!highlights) return;
+
+            const now = performance.now();
+            const ctx = chart.ctx;
+
+            for (const highlight of highlights) {
+                const progress = (now - highlight.startedAt) / HIGHLIGHT_DURATION_MS;
+                if (progress >= 1) continue;
+
+                const datasetIndex = chart.data.datasets.indexOf(highlight.dataset);
+                if (datasetIndex < 0 || !chart.isDatasetVisible(datasetIndex)) continue;
+
+                const pointIndex = highlight.dataset.data.indexOf(highlight.point);
+                if (pointIndex < 0) continue;
+
+                const element = chart.getDatasetMeta(datasetIndex).data[pointIndex];
+                if (!element || element.skip) continue;
+
+                ctx.save();
+                ctx.globalAlpha = 1 - progress;
+                ctx.fillStyle = HIGHLIGHT_COLOR;
+                ctx.strokeStyle = HIGHLIGHT_COLOR;
+                ctx.lineWidth = 1.5;
+
+                // Bright new point, then reveal its original dataset color.
+                ctx.beginPath();
+                ctx.arc(element.x, element.y, 5, 0, 2 * Math.PI);
+                ctx.fill();
+
+                // A subtle outward-fading ring makes each arrival visible.
+                ctx.beginPath();
+                ctx.arc(element.x, element.y, 7 + progress * 5, 0, 2 * Math.PI);
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+    };
+
+    // Redraw only while new points are fading. No continuous animation loop.
+    function animateHighlights() {
+        highlightFrameId = null;
+        const now = performance.now();
+        let anyRemaining = false;
+
+        for (const [chart, highlights] of highlightsByChart) {
+            const remaining = highlights.filter(highlight =>
+                now - highlight.startedAt < HIGHLIGHT_DURATION_MS &&
+                highlight.dataset.data.includes(highlight.point)
+            );
+
+            if (remaining.length === 0) {
+                highlightsByChart.delete(chart);
+            } else {
+                highlightsByChart.set(chart, remaining);
+                anyRemaining = true;
+            }
+
+            chart.draw();
+        }
+
+        if (anyRemaining) {
+            highlightFrameId = requestAnimationFrame(animateHighlights);
+        }
+    }
+
+    const palette = [
+        "#3b82f6", "#14b8a6", "#f59e0b",
+        "#a855f7", "#ef4444", "#06b6d4"
+    ];
+
+    function colorForNode(nodeId) {
+        if (!nodeColors.has(nodeId)) {
+            nodeColors.set(nodeId, palette[nodeColors.size % palette.length]);
+        }
+        return nodeColors.get(nodeId);
+    }
+
+    function metricInfo(metric) {
+        switch (metric) {
+            case "temp_f":
+                return { title: "Temperature History", axis: "Temperature (°F)" };
+            case "humidity":
+                return { title: "Humidity History", axis: "Humidity (%)" };
+            default:
+                return { title: metric + " History", axis: metric };
+        }
+    }
+
+    function formatAxisTime(value) {
+        return new Date(Number(value)).toLocaleTimeString([], {
+            hour: "numeric",
+            minute: "2-digit",
+            second: "2-digit"
+        });
+    }
+
+    // Create a chart the first time a metric appears.
+    function getOrCreateChart(metric) {
+        if (chartsByMetric.has(metric)) {
+            return chartsByMetric.get(metric);
+        }
+
+        const info = metricInfo(metric);
+        const card = document.createElement("article");
+        card.className = "chart-card";
+
+        const header = document.createElement("div");
+        header.className = "chart-header";
+
+        const title = document.createElement("h3");
+        title.className = "chart-title";
+        title.textContent = info.title;
+
+        const subtitle = document.createElement("span");
+        subtitle.className = "chart-subtitle";
+        subtitle.textContent = "0 readings · last hour";
+        subtitlesByMetric.set(metric, subtitle);
+
+        header.append(title, subtitle);
+
+        const plot = document.createElement("div");
+        plot.className = "chart-plot";
+        const canvas = document.createElement("canvas");
+        plot.appendChild(canvas);
+        card.append(header, plot);
+        chartContainer.appendChild(card);
+
+        // Remove the empty-state notice if the first event creates a chart.
+        const emptyMessage = document.getElementById("charts-empty-message");
+        if (emptyMessage) emptyMessage.remove();
+
+        const now = Date.now();
+        const chart = new Chart(canvas, {
+            type: "line",
+            data: { datasets: [] },
+            plugins: [incomingPointHighlightPlugin],
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                parsing: false,
+                plugins: {
+                    decimation: { enabled: false },
+                    legend: { display: true, position: "bottom" },
+                    tooltip: {
+                        callbacks: {
+                            title: items => items.length
+                                ? new Date(items[0].parsed.x).toLocaleString()
+                                : ""
+                        }
+                    }
+                },
+                interaction: { mode: "nearest", intersect: false },
+                scales: {
+                    x: {
+                        type: "linear",
+                        min: now - WINDOW_MS,
+                        max: now + RIGHT_PADDING_MS,
+                        title: { display: true, text: "Received At" },
+                        ticks: { maxTicksLimit: 6, callback: formatAxisTime }
+                    },
+                    y: {
+                        title: { display: true, text: info.axis }
+                    }
+                }
+            }
+        });
+
+        chartsByMetric.set(metric, chart);
+        return chart;
+    }
+
+    // Each node:metric pair has its own line on the metric's chart.
+    function getOrCreateDataset(nodeId, metric) {
+        const seriesKey = nodeId + ":" + metric;
+        if (datasetsBySeries.has(seriesKey)) {
+            return datasetsBySeries.get(seriesKey);
+        }
+
+        const chart = getOrCreateChart(metric);
+        const color = colorForNode(nodeId);
+        const dataset = {
+            label: nodeId,
+            data: [],
+            borderColor: color,
+            backgroundColor: color,
+            borderWidth: 1.5,
+            pointRadius: 1.5,
+            pointHoverRadius: 5,
+            pointHitRadius: 5,
+            tension: 0,
+            fill: false,
+            // Do not draw a connecting line across an outage (> 30 seconds).
+            spanGaps: GAP_THRESHOLD_MS
+        };
+
+        chart.data.datasets.push(dataset);
+        datasetsBySeries.set(seriesKey, dataset);
+        return dataset;
+    }
+
+    // Read the historical series already provided by Go.
+    const initialCutoff = Date.now() - WINDOW_MS;
+    for (const [seriesKey, readings] of Object.entries(historicalData || {}).sort()) {
+        const separator = seriesKey.lastIndexOf(":");
+        if (separator < 1 || !Array.isArray(readings)) continue;
+
+        const nodeId = seriesKey.slice(0, separator);
+        const metric = seriesKey.slice(separator + 1);
+        const points = readings
+            .map(reading => ({
+                x: Date.parse(reading.receivedAt),
+                y: Number(reading.value)
+            }))
+            .filter(point =>
+                Number.isFinite(point.x) &&
+                Number.isFinite(point.y) &&
+                point.x >= initialCutoff
+            )
+            .sort((a, b) => a.x - b.x);
+
+        if (points.length === 0) continue;
+        const dataset = getOrCreateDataset(nodeId, metric);
+        dataset.data.push(...points);
+    }
+
+    if (chartsByMetric.size === 0) {
+        const message = document.createElement("p");
+        message.id = "charts-empty-message";
+        message.className = "empty-message";
+        message.textContent = "No historical readings available.";
+        chartContainer.appendChild(message);
+    }
+
+    // Advance the X-axis and evict only browser-side points older than 1 hour.
+    // This does NOT delete anything from SQLite.
+    function refreshRollingWindow() {
+        const now = Date.now();
+        const cutoff = now - WINDOW_MS;
+
+        for (const [metric, chart] of chartsByMetric) {
+            chart.options.scales.x.min = cutoff;
+            chart.options.scales.x.max = now + RIGHT_PADDING_MS;
+
+            let count = 0;
+            for (const dataset of chart.data.datasets) {
+                // Points are kept in timestamp order.
+                while (dataset.data.length && dataset.data[0].x < cutoff) {
+                    dataset.data.shift();
+                }
+                count += dataset.data.length;
+            }
+
+            subtitlesByMetric.get(metric).textContent =
+                count.toLocaleString() + " readings · last hour";
+
+            chart.update("none");
+        }
+    }
+
+    refreshRollingWindow();
+    setInterval(refreshRollingWindow, WINDOW_REFRESH_MS);
+
+    // Subscribe to the existing r3labs/sse sensorReadings stream.
+    const eventSource = new EventSource("/events?stream=sensorReadings");
+
+    eventSource.onopen = function () {
+        console.log("SSE connection established");
+    };
+
+    eventSource.onmessage = function (event) {
+        let reading;
+        try {
+            reading = JSON.parse(event.data);
+        } catch (error) {
+            console.warn("Ignoring invalid SSE JSON:", event.data, error);
+            return;
+        }
+
+        if (!reading || typeof reading.nodeId !== "string" ||
+            typeof reading.metric !== "string" ||
+            !reading.nodeId || !reading.metric ||
+            reading.value === null || reading.value === "") {
+            return;
+        }
+
+        const x = Date.parse(reading.receivedAt);
+        const y = Number(reading.value);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+
+        // Ignore readings already outside the displayed window.
+        if (x < Date.now() - WINDOW_MS) return;
+
+        const dataset = getOrCreateDataset(reading.nodeId, reading.metric);
+
+        // Avoid duplicate points, e.g. if a message is replayed on reconnect.
+        if (dataset.data.some(point => point.x === x && point.y === y)) {
+            return;
+        }
+
+        const newPoint = { x, y };
+        dataset.data.push(newPoint);
+
+        // Normal arrivals are chronological. Sort only if an event arrives late.
+        if (dataset.data.length > 1 &&
+            dataset.data[dataset.data.length - 2].x > x) {
+            dataset.data.sort((a, b) => a.x - b.x);
+        }
+
+        // Highlight only the newly arrived reading, not the initial history.
+        const chart = chartsByMetric.get(reading.metric);
+        if (!highlightsByChart.has(chart)) {
+            highlightsByChart.set(chart, []);
+        }
+        highlightsByChart.get(chart).push({
+            dataset,
+            point: newPoint,
+            startedAt: performance.now()
+        });
+
+        refreshRollingWindow();
+        if (highlightFrameId === null) {
+            highlightFrameId = requestAnimationFrame(animateHighlights);
+        }
+    };
+
+    eventSource.onerror = function (error) {
+        console.warn("SSE connection interrupted; browser will retry", error);
+    };
+})();
+</script>
+
+
+
 </body>
+
 </html>
