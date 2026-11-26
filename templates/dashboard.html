@@ -136,7 +136,31 @@
 
         </section>
 
+        <section class="metric">
+            <div class="metric-label">
+                <svg viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="1.8"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="4"/>
+                    <path d="M12 2v2m0 16v2M2 12h2m16 0h2
+                            M4.93 4.93l1.42 1.42
+                            m11.3 11.3 1.42 1.42
+                            M4.93 19.07l1.42-1.42
+                            m11.3-11.3 1.42-1.42"/>
+                </svg>
+                Light
+            </div>
 
+            <div class="metric-value">
+                {{if .Light.ReceivedAt.IsZero}}
+                    —
+                {{else}}
+                    {{printf "%.2f" .Light.Value}}<span class="metric-unit"> lx</span>
+                {{end}}
+            </div>
+
+            {{template "metric-status" .Light}}
+        </section>
 
     </div>
 

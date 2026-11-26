@@ -133,9 +133,11 @@ func main() {
 
 		latestSensorReading_Temp, _ := getLastSensorReading(db, "node-177", "temp_f")
 		latestSensorReading_Humidity, _ := getLastSensorReading(db, "node-177", "humidity")
+		latestSensorReading_Light, _ := getLastSensorReading(db, "node-177", "lux")
 
 		temp, _ := strconv.ParseFloat(latestSensorReading_Temp.Value, 64)
 		humidity, _ := strconv.ParseFloat(latestSensorReading_Humidity.Value, 64)
+		light, _ := strconv.ParseFloat(latestSensorReading_Light.Value, 64)
 
 		node177data := SensorNodeData{
 			NodeID: latestSensorReading_Temp.NodeId,
@@ -148,6 +150,11 @@ func main() {
 				Value:      humidity,
 				ReceivedAt: latestSensorReading_Humidity.ReceivedAt,
 				IsStale:    latestSensorReading_Humidity.IsStale,
+			},
+			Light: MetricData{
+				Value:      light,
+				ReceivedAt: latestSensorReading_Light.ReceivedAt,
+				IsStale:    latestSensorReading_Light.IsStale,
 			},
 		}
 
@@ -551,6 +558,7 @@ type SensorNodeData struct {
 	NodeID      string
 	Temperature MetricData
 	Humidity    MetricData
+	Light       MetricData
 }
 
 type DashboardData struct {
